@@ -29,12 +29,19 @@ export function startStream(
   };
 
   const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+  const hfToken = process.env.NEXT_PUBLIC_HF_TOKEN;
+  
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json"
+  };
+  
+  if (hfToken) {
+    headers["Authorization"] = `Bearer ${hfToken}`;
+  }
 
-  fetch(`${backendUrl}/chat/stream`, {
+  fetch(`${backendUrl.replace(/\/$/, '')}/chat/stream`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
+    headers: headers,
     body: JSON.stringify(payload),
     signal: abortController.signal
   }).then(async (res) => {
@@ -112,10 +119,20 @@ export function stopStream(sessionId: string) {
 
 export async function generateChatTitle(message: string): Promise<string> {
   const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+  const hfToken = process.env.NEXT_PUBLIC_HF_TOKEN;
+  
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json"
+  };
+  
+  if (hfToken) {
+    headers["Authorization"] = `Bearer ${hfToken}`;
+  }
+
   try {
-    const res = await fetch(`${backendUrl}/chat/title`, {
+    const res = await fetch(`${backendUrl.replace(/\/$/, '')}/chat/title`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: headers,
       body: JSON.stringify({ message })
     });
     const data = await res.json();
