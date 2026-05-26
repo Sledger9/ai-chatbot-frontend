@@ -1,6 +1,6 @@
 import { FilePayload, MessagePayload } from "./types";
 
-let abortController: AbortController | null = null;
+let abortControllers = new Map<string, AbortController>();
 
 export interface StreamCallbacks {
   onReasoning: (content: string) => void;
@@ -18,7 +18,8 @@ export function startStream(
   files: FilePayload[],
   callbacks: StreamCallbacks
 ) {
-  abortController = new AbortController();
+  const abortController = new AbortController();
+  abortControllers.set(sessionId, abortController);
 
   const payload = {
     session_id: sessionId,
@@ -101,10 +102,11 @@ export function startStream(
   });
 }
 
-export function stopStream() {
-  if (abortController) {
-    abortController.abort();
-    abortController = null;
+export function stopStream(sessionId: string) {
+  const controller = abortControllers.get(sessionId);
+  if (controller) {
+    controller.abort();
+    abortControllers.delete(sessionId);
   }
 }
 
