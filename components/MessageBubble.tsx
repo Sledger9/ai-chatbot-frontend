@@ -54,7 +54,7 @@ export function MessageBubble({
     parts.push({ type: "text", content: message.content.substring(lastIndex) });
   }
 
-  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "https://sledger99-ai-chatbot-backend.hf.space";
 
   return (
     <div

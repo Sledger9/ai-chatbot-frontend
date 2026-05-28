@@ -56,7 +56,7 @@ export default function Home() {
       else handleNewChat();
     }
     // Also delete on server
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "https://sledger99-ai-chatbot-backend.hf.space";
     fetch(`${backendUrl}/sessions/${id}`, { method: "DELETE" }).catch(() => {});
   };
 

@@ -21,7 +21,7 @@ export function startStream(
   const abortController = new AbortController();
   abortControllers.set(sessionId, abortController);
 
-  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "https://sledger99-ai-chatbot-backend.hf.space";
   const hfToken    = process.env.NEXT_PUBLIC_HF_TOKEN;
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (hfToken) headers["Authorization"] = `Bearer ${hfToken}`;
@@ -106,7 +106,7 @@ export function stopStream(sessionId: string) {
 }
 
 export async function generateChatTitle(message: string): Promise<string> {
-  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "https://sledger99-ai-chatbot-backend.hf.space";
   const hfToken    = process.env.NEXT_PUBLIC_HF_TOKEN;
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (hfToken) headers["Authorization"] = `Bearer ${hfToken}`;
