@@ -1,6 +1,6 @@
-import { FilePayload, MessagePayload, ToolCall } from "./types";
+import { FilePayload, MessagePayload } from "./types";
 
-let abortControllers = new Map<string, AbortController>();
+const abortControllers = new Map<string, AbortController>();
 
 export interface StreamCallbacks {
   onReasoning:  (content: string) => void;

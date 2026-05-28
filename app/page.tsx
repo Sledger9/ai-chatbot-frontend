@@ -6,7 +6,7 @@ import { ChatInput }    from "@/components/ChatInput";
 import { FilePreview }  from "@/components/FilePreview";
 import { ArtifactViewer, ArtifactData } from "@/components/ArtifactViewer";
 import {
-  loadSessions, createSession, getSession,
+  loadSessions, createSession,
   updateSessionMessages, updateSessionTitle, deleteSession
 } from "@/lib/localStorage";
 import { ChatSession, MessagePayload, FilePayload, ToolCall } from "@/lib/types";
@@ -21,17 +21,6 @@ export default function Home() {
   const [attachedFiles,    setAttachedFiles]    = useState<FilePayload[]>([]);
   const [activeArtifact,   setActiveArtifact]   = useState<ArtifactData | null>(null);
 
-  // Load sessions on mount
-  useEffect(() => {
-    const loaded = loadSessions();
-    if (loaded.length > 0) {
-      setSessions(loaded);
-      setActiveSessionId(loaded[0].id);
-    } else {
-      handleNewChat();
-    }
-  }, []);
-
   const reload = () => setSessions(loadSessions());
   const activeSession = sessions.find(s => s.id === activeSessionId);
 
@@ -39,8 +28,24 @@ export default function Home() {
     const s = createSession();
     reload();
     setActiveSessionId(s.id);
-    if (window.innerWidth < 768) setSidebarOpen(false);
+    if (typeof window !== "undefined" && window.innerWidth < 768) setSidebarOpen(false);
   };
+
+  // Load sessions on mount
+  useEffect(() => {
+    const loaded = loadSessions();
+    if (loaded.length > 0) {
+      setTimeout(() => {
+        setSessions(loaded);
+        setActiveSessionId(loaded[0].id);
+      }, 0);
+    } else {
+      setTimeout(() => {
+        handleNewChat();
+      }, 0);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleSelectSession = (id: string) => {
     setActiveSessionId(id);

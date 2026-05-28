@@ -1,7 +1,6 @@
 "use client";
 import React, { useState } from "react";
-import { MessagePayload, ToolCall } from "@/lib/types";
-import { ThinkingPanel } from "./ThinkingPanel";
+import { MessagePayload } from "@/lib/types";
 import { ToolCallCard } from "./ToolCallCard";
 import { CodeBlock } from "./CodeBlock";
 import { ArtifactData } from "./ArtifactViewer";
@@ -17,11 +16,10 @@ interface MessageBubbleProps {
   isStreaming?: boolean;
   onOpenArtifact?: (a: ArtifactData) => void;
   onRetry?: () => void;
-  onEdit?: (content: string) => void;
 }
 
 export function MessageBubble({
-  message, isStreaming, onOpenArtifact, onRetry, onEdit
+  message, isStreaming, onOpenArtifact, onRetry
 }: MessageBubbleProps) {
   const isUser = message.role === "user";
   const [copied, setCopied]     = useState(false);
@@ -35,7 +33,15 @@ export function MessageBubble({
   };
 
   // Parse <artifact> and <download> tags out of the content
-  const parts: any[] = [];
+  interface MessagePart {
+    type: "text" | "artifact" | "download";
+    content?: string;
+    title?: string;
+    language?: string;
+    url?: string;
+    filename?: string;
+  }
+  const parts: MessagePart[] = [];
   let lastIndex = 0;
   const tagRegex = /(?:<artifact\s+title="([^"]+)"\s+language="([^"]+)">([\\s\S]*?)(?:<\/artifact>|$))|(?:<download\s+url="([^"]+)"\s+filename="([^"]+)"><\/download>)/g;
   let match;
@@ -85,6 +91,7 @@ export function MessageBubble({
         {message.imageUrls && message.imageUrls.length > 0 && (
           <div className="flex flex-wrap gap-2 mb-3">
             {message.imageUrls.map((url, i) => (
+              /* eslint-disable-next-line @next/next/no-img-element */
               <img
                 key={i}
                 src={url}
@@ -160,7 +167,7 @@ export function MessageBubble({
                 key={i}
                 remarkPlugins={[remarkGfm]}
                 components={{
-                  code({ node, inline, className, children, ...props }: any) {
+                  code({ inline, className, children, ...props }: React.HTMLAttributes<HTMLElement> & { inline?: boolean }) {
                     const langMatch = /language-(\w+)/.exec(className || "");
                     return !inline && langMatch ? (
                       <CodeBlock

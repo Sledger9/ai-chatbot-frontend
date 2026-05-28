@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { FilePayload } from "@/lib/types";
 import {
-  Send, Square, Paperclip, Mic, MicOff, X, Image as ImageIcon
+  Send, Square, Paperclip, Mic, MicOff, Image as ImageIcon
 } from "lucide-react";
 
 interface ChatInputProps {
@@ -22,7 +22,7 @@ export function ChatInput({
   const imageInputRef = useRef<HTMLInputElement>(null);
 
   const [isRecording, setIsRecording]       = useState(false);
-  const [recordingAnim, setRecordingAnim]   = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recognitionRef = useRef<any>(null);
 
   // Auto-resize textarea
@@ -41,7 +41,7 @@ export function ChatInput({
   };
 
   // ── File / Image upload ───────────────────────────────────────────────────
-  const processFile = (file: File, isImage = false) => {
+  const processFile = (file: File) => {
     const reader = new FileReader();
     reader.onload = () => {
       const base64 = (reader.result as string).split(",")[1];
@@ -50,14 +50,15 @@ export function ChatInput({
     reader.readAsDataURL(file);
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, isImage = false) => {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
-    files.forEach(f => processFile(f, isImage));
+    files.forEach(f => processFile(f));
     e.target.value = "";
   };
 
   // ── Voice Input ───────────────────────────────────────────────────────────
   const toggleVoice = () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
       alert("Voice input is not supported in this browser. Please use Chrome.");
@@ -67,7 +68,6 @@ export function ChatInput({
     if (isRecording) {
       recognitionRef.current?.stop();
       setIsRecording(false);
-      setRecordingAnim(false);
       return;
     }
 
@@ -76,25 +76,24 @@ export function ChatInput({
     recognition.interimResults = true;
     recognition.lang          = "en-US";
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     recognition.onresult = (event: any) => {
       const transcript = Array.from(event.results)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         .map((r: any) => r[0].transcript)
         .join("");
       setInput(transcript);
     };
     recognition.onend = () => {
       setIsRecording(false);
-      setRecordingAnim(false);
     };
     recognition.onerror = () => {
       setIsRecording(false);
-      setRecordingAnim(false);
     };
 
     recognitionRef.current = recognition;
     recognition.start();
     setIsRecording(true);
-    setRecordingAnim(true);
   };
 
   return (
@@ -116,7 +115,7 @@ export function ChatInput({
                   key={i}
                   className="w-0.5 bg-red-400 rounded-full animate-pulse"
                   style={{
-                    height: `${8 + Math.random() * 12}px`,
+                    height: `${8 + (i * 3) % 13}px`,
                     animationDelay: `${i * 100}ms`
                   }}
                 />
@@ -139,7 +138,7 @@ export function ChatInput({
         {/* Toolbar */}
         <div className="flex items-center gap-1">
           {/* File attach */}
-          <input ref={fileInputRef} type="file" className="hidden" multiple onChange={e => handleFileChange(e)} />
+          <input ref={fileInputRef} type="file" className="hidden" multiple onChange={handleFileChange} />
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={isStreaming}
@@ -150,7 +149,7 @@ export function ChatInput({
           </button>
 
           {/* Image attach */}
-          <input ref={imageInputRef} type="file" accept="image/*" className="hidden" multiple onChange={e => handleFileChange(e, true)} />
+          <input ref={imageInputRef} type="file" accept="image/*" className="hidden" multiple onChange={handleFileChange} />
           <button
             onClick={() => imageInputRef.current?.click()}
             disabled={isStreaming}
