@@ -1,4 +1,5 @@
 "use client";
+// Test trigger for Vercel deployment rebuild
 import React, { useState, useEffect } from "react";
 import { ChatSidebar }  from "@/components/ChatSidebar";
 import { ChatWindow }   from "@/components/ChatWindow";
