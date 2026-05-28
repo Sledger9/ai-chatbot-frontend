@@ -95,9 +95,13 @@ export function MessageBubble({
           </div>
         )}
 
-        {/* Thinking panel */}
-        {message.reasoning && (
-          <ThinkingPanel content={message.reasoning} isStreaming={isStreaming} />
+        {/* Claude-style 3-dots pulsing loader when streaming and content hasn't arrived yet */}
+        {isStreaming && !message.content && (
+          <div className="flex items-center gap-1.5 py-3 px-1 select-none">
+            <span className="w-2 h-2 rounded-full bg-neutral-600 animate-bounce [animation-delay:-0.3s]" />
+            <span className="w-2 h-2 rounded-full bg-neutral-600 animate-bounce [animation-delay:-0.15s]" />
+            <span className="w-2 h-2 rounded-full bg-neutral-600 animate-bounce" />
+          </div>
         )}
 
         {/* Tool call cards */}
@@ -142,7 +146,7 @@ export function MessageBubble({
                     </div>
                   </div>
                   <a
-                    href={`${backendUrl}${part.url}`}
+                    href={`${backendUrl.replace(/\/$/, "")}${part.url}`}
                     download={part.filename}
                     className="flex-shrink-0 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-lg transition-colors"
                   >
