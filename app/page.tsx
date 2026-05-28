@@ -1,25 +1,27 @@
 "use client";
-
 import React, { useState, useEffect } from "react";
-import { ChatSidebar } from "@/components/ChatSidebar";
-import { ChatWindow } from "@/components/ChatWindow";
-import { ChatInput } from "@/components/ChatInput";
-import { FilePreview } from "@/components/FilePreview";
+import { ChatSidebar }  from "@/components/ChatSidebar";
+import { ChatWindow }   from "@/components/ChatWindow";
+import { ChatInput }    from "@/components/ChatInput";
+import { FilePreview }  from "@/components/FilePreview";
 import { ArtifactViewer, ArtifactData } from "@/components/ArtifactViewer";
-import { loadSessions, createSession, getSession, updateSessionMessages, updateSessionTitle, deleteSession } from "@/lib/localStorage";
-import { ChatSession, MessagePayload, FilePayload } from "@/lib/types";
+import {
+  loadSessions, createSession, getSession,
+  updateSessionMessages, updateSessionTitle, deleteSession
+} from "@/lib/localStorage";
+import { ChatSession, MessagePayload, FilePayload, ToolCall } from "@/lib/types";
 import { startStream, stopStream, generateChatTitle } from "@/lib/streamChat";
 
 export default function Home() {
-  const [sessions, setSessions] = useState<ChatSession[]>([]);
-  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
-  const [input, setInput] = useState("");
-  const [streamingSessions, setStreamingSessions] = useState<Set<string>>(new Set());
-  const [activeTool, setActiveTool] = useState<{name: string, input: string} | null>(null);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [attachedFiles, setAttachedFiles] = useState<FilePayload[]>([]);
-  const [activeArtifact, setActiveArtifact] = useState<ArtifactData | null>(null);
+  const [sessions,         setSessions]         = useState<ChatSession[]>([]);
+  const [activeSessionId,  setActiveSessionId]  = useState<string | null>(null);
+  const [input,            setInput]            = useState("");
+  const [streamingSet,     setStreamingSet]     = useState<Set<string>>(new Set());
+  const [sidebarOpen,      setSidebarOpen]      = useState(false);
+  const [attachedFiles,    setAttachedFiles]    = useState<FilePayload[]>([]);
+  const [activeArtifact,   setActiveArtifact]   = useState<ArtifactData | null>(null);
 
+  // Load sessions on mount
   useEffect(() => {
     const loaded = loadSessions();
     if (loaded.length > 0) {
@@ -30,10 +32,13 @@ export default function Home() {
     }
   }, []);
 
+  const reload = () => setSessions(loadSessions());
+  const activeSession = sessions.find(s => s.id === activeSessionId);
+
   const handleNewChat = () => {
-    const newSession = createSession();
-    setSessions(loadSessions());
-    setActiveSessionId(newSession.id);
+    const s = createSession();
+    reload();
+    setActiveSessionId(s.id);
     if (window.innerWidth < 768) setSidebarOpen(false);
   };
 
@@ -47,44 +52,66 @@ export default function Home() {
     const updated = loadSessions();
     setSessions(updated);
     if (activeSessionId === id) {
-      setActiveSessionId(updated.length > 0 ? updated[0].id : null);
+      if (updated.length > 0) setActiveSessionId(updated[0].id);
+      else handleNewChat();
     }
-    if (updated.length === 0) handleNewChat();
+    // Also delete on server
+    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+    fetch(`${backendUrl}/sessions/${id}`, { method: "DELETE" }).catch(() => {});
   };
 
-  const activeSession = sessions.find(s => s.id === activeSessionId);
-
   const handleSend = () => {
-    if (!input.trim() || !activeSessionId) return;
+    if (!input.trim() || !activeSessionId || streamingSet.has(activeSessionId)) return;
 
-    const userMessage: MessagePayload = { role: "user", content: input };
+    const userMsg: MessagePayload = {
+      role: "user",
+      content: input,
+      imageUrls: attachedFiles.filter(f => f.type.startsWith("image/")).map(f => `data:${f.type};base64,${f.base64}`)
+    };
+
     const currentMessages = [...(activeSession?.messages || [])];
-    const newHistory = [...currentMessages, userMessage];
-
+    const newHistory      = [...currentMessages, userMsg];
     updateSessionMessages(activeSessionId, newHistory);
-    setSessions(loadSessions());
-    setInput("");
-    
-    // Auto title gen if it's the first message
+
+    // Auto-title on first message
     if (currentMessages.length === 0) {
       generateChatTitle(input).then(title => {
         updateSessionTitle(activeSessionId, title);
-        setSessions(loadSessions());
+        reload();
       });
     }
 
-    // Add empty assistant message to stream into
-    newHistory.push({ role: "assistant", content: "", reasoning: "" });
-    updateSessionMessages(activeSessionId, newHistory);
-    setSessions(loadSessions());
+    // Placeholder assistant message
+    const assistantPlaceholder: MessagePayload = {
+      role: "assistant",
+      content: "",
+      reasoning: "",
+      toolCalls: []
+    };
+    const withPlaceholder = [...newHistory, assistantPlaceholder];
+    updateSessionMessages(activeSessionId, withPlaceholder);
+    reload();
 
-    setStreamingSessions(prev => new Set(prev).add(activeSessionId));
-    setActiveTool(null);
+    setInput("");
     const filesToSubmit = [...attachedFiles];
     setAttachedFiles([]);
+    setStreamingSet(prev => new Set(prev).add(activeSessionId));
 
-    let assistantContent = "";
+    let assistantContent  = "";
     let assistantReasoning = "";
+    const toolCallsMap    = new Map<string, ToolCall>();
+
+    const updateMsg = () => {
+      const msgs = [...withPlaceholder];
+      msgs[msgs.length - 1] = {
+        role: "assistant",
+        content: assistantContent,
+        reasoning: assistantReasoning,
+        toolCalls: Array.from(toolCallsMap.values())
+      };
+      updateSessionMessages(activeSessionId!, msgs);
+      reload();
+    };
 
     startStream(
       activeSessionId,
@@ -92,104 +119,74 @@ export default function Home() {
       currentMessages,
       filesToSubmit,
       {
-        onReasoning: (content) => {
-          assistantReasoning += content;
-          updateAssistantMsg();
+        onReasoning: (chunk) => { assistantReasoning += chunk; updateMsg(); },
+        onToken:     (chunk) => {
+          // Strip any residual leaked tool call tokens
+          let safe = chunk;
+          safe = safe.replace(/<\|[^|]+\|>/g, "");
+          safe = safe.replace(/<tool_call>[\s\S]*?<\/tool_call>/g, "");
+          assistantContent += safe;
+          updateMsg();
         },
-        onToken: (content) => {
-          assistantContent += content;
-          
-          let displayContent = assistantContent;
-          // Filter out LangChain ReAct agent's internal thought/answer prefixes
-          displayContent = displayContent.replace(/Final Answer:\s*/g, "");
-          if (displayContent.includes("Thought: ")) {
-             displayContent = displayContent.replace(/Thought:.*?(?=\n|$)/g, "");
+        onToolStart: (id, name, toolInput) => {
+          toolCallsMap.set(id, {
+            id, name,
+            input: toolInput,
+            status: "running",
+            startedAt: Date.now()
+          });
+          updateMsg();
+        },
+        onToolEnd: (id, name, result) => {
+          const existing = toolCallsMap.get(id) || { id, name, input: "", status: "running" as const, startedAt: Date.now() };
+          toolCallsMap.set(id, {
+            ...existing,
+            result,
+            status: "done",
+            endedAt: Date.now()
+          });
+          // Append download link if zip
+          if (name === "zip_and_expose" && result?.startsWith("/downloads")) {
+            const filename = result.split("/").pop() || "project.zip";
+            assistantContent += `\n\n<download url="${result}" filename="${filename}"></download>\n\n`;
           }
-          
-          // Filter out Nemotron's leaked <tool_call> XML tags!
-          // Remove complete tool calls
-          displayContent = displayContent.replace(/<tool_call>[\s\S]*?<\/tool_call>/g, "");
-          // Hide incomplete tool calls that are currently streaming
-          displayContent = displayContent.replace(/<tool_call>[\s\S]*$/g, "");
-          
-          updateAssistantMsg(displayContent);
-        },
-        onToolCall: (name, input) => {
-          setActiveTool({ name, input });
-        },
-        onToolResult: (name, result) => {
-          setActiveTool(null);
-          if (name === "zip_and_expose") {
-            try {
-              // result is expected to be a string representing the relative URL path
-              const url = result.trim();
-              if (url.startsWith("/downloads")) {
-                const filename = url.split('/').pop() || "project.zip";
-                assistantContent += `\n\n<download url="${url}" filename="${filename}"></download>\n\n`;
-                updateAssistantMsg();
-              }
-            } catch (e) {
-              console.error("Error parsing zip_and_expose result", e);
-            }
-          }
+          updateMsg();
         },
         onDone: () => {
-          setStreamingSessions(prev => {
-            const next = new Set(prev);
-            next.delete(activeSessionId);
-            return next;
-          });
-          setActiveTool(null);
+          setStreamingSet(prev => { const n = new Set(prev); n.delete(activeSessionId!); return n; });
         },
         onError: (err) => {
-          console.error("Stream error:", err);
           assistantContent += `\n\n**Error:** ${err}`;
-          updateAssistantMsg();
+          updateMsg();
         }
       }
     );
-
-    function updateAssistantMsg(displayContent?: string) {
-      let finalContent = displayContent !== undefined ? displayContent : assistantContent;
-      
-      // Filter out LangChain ReAct agent's internal thought/answer prefixes
-      finalContent = finalContent.replace(/Final Answer:\s*/g, "");
-      if (finalContent.includes("Thought: ")) {
-         finalContent = finalContent.replace(/Thought:.*?(?=\n|$)/g, "");
-      }
-      
-      // Filter out Nemotron's leaked <tool_call> XML tags!
-      finalContent = finalContent.replace(/<tool_call>[\s\S]*?<\/tool_call>/g, "");
-      finalContent = finalContent.replace(/<tool_call>[\s\S]*$/g, "");
-
-      const messages = [...newHistory];
-      messages[messages.length - 1] = {
-        role: "assistant",
-        content: finalContent,
-        reasoning: assistantReasoning
-      };
-      updateSessionMessages(activeSessionId!, messages);
-      setSessions(loadSessions());
-    }
   };
 
   const handleStop = () => {
-    if (activeSessionId) {
-      stopStream(activeSessionId);
-      setStreamingSessions(prev => {
-        const next = new Set(prev);
-        next.delete(activeSessionId);
-        return next;
-      });
-    }
-    setActiveTool(null);
+    if (activeSessionId) stopStream(activeSessionId);
+    setStreamingSet(prev => { const n = new Set(prev); n.delete(activeSessionId!); return n; });
   };
 
-  const isCurrentSessionStreaming = activeSessionId ? streamingSessions.has(activeSessionId) : false;
+  const handleRetry = () => {
+    if (!activeSession || activeSession.messages.length < 2) return;
+    // Find last user message and re-send it
+    const msgs = [...activeSession.messages];
+    const lastUser = [...msgs].reverse().find(m => m.role === "user");
+    if (!lastUser) return;
+    // Remove last assistant message
+    const trimmed = msgs.slice(0, msgs.findLastIndex((m: MessagePayload) => m.role === "user"));
+    updateSessionMessages(activeSessionId!, trimmed);
+    reload();
+    setInput(lastUser.content);
+    setTimeout(handleSend, 50);
+  };
+
+  const isCurrentSessionStreaming = activeSessionId ? streamingSet.has(activeSessionId) : false;
 
   return (
-    <main className="flex h-screen bg-[#121212] text-white overflow-hidden">
-      <ChatSidebar 
+    <main className="flex h-screen bg-[#0d0d0d] text-white overflow-hidden">
+      <ChatSidebar
         sessions={sessions}
         activeSessionId={activeSessionId}
         onSelectSession={handleSelectSession}
@@ -198,53 +195,56 @@ export default function Home() {
         isOpen={sidebarOpen}
         setIsOpen={setSidebarOpen}
       />
-      
+
       <div className="flex-1 flex flex-row relative h-full overflow-hidden">
-        {/* Chat Area */}
-        <div className={`flex-1 flex flex-col relative h-full transition-all duration-300 ${activeArtifact ? 'hidden md:flex w-1/2' : 'w-full'}`}>
+        {/* Chat column */}
+        <div className={`flex-1 flex flex-col relative h-full transition-all duration-300 ${activeArtifact ? "hidden md:flex" : "flex"}`}>
           {activeSession ? (
-            <ChatWindow 
-              messages={activeSession.messages} 
-              activeTool={activeTool} 
-              isStreaming={isCurrentSessionStreaming} 
+            <ChatWindow
+              messages={activeSession.messages}
+              isStreaming={isCurrentSessionStreaming}
               onOpenArtifact={setActiveArtifact}
+              onRetry={handleRetry}
             />
           ) : (
-            <div className="flex-1" />
+            <div className="flex-1 flex items-center justify-center text-neutral-600 text-sm">
+              Start a new conversation
+            </div>
           )}
-          
-          <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-[#121212] via-[#121212] to-transparent pt-10 pb-6 px-4">
-            <div className="max-w-4xl mx-auto flex flex-col gap-2">
+
+          {/* Input area */}
+          <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-[#0d0d0d] via-[#0d0d0d]/95 to-transparent pt-12 pb-6 px-4">
+            <div className="max-w-3xl mx-auto flex flex-col gap-2">
               {attachedFiles.length > 0 && (
-                <div className="flex flex-wrap gap-2 px-2">
+                <div className="flex flex-wrap gap-2 px-1">
                   {attachedFiles.map((file, i) => (
-                    <FilePreview 
-                      key={i} 
-                      file={file} 
-                      onRemove={() => setAttachedFiles(attachedFiles.filter((_, idx) => idx !== i))} 
+                    <FilePreview
+                      key={i}
+                      file={file}
+                      onRemove={() => setAttachedFiles(attachedFiles.filter((_, idx) => idx !== i))}
                     />
                   ))}
                 </div>
               )}
-              <ChatInput 
+              <ChatInput
                 input={input}
                 setInput={setInput}
                 onSend={handleSend}
                 onStop={handleStop}
                 isStreaming={isCurrentSessionStreaming}
-                onFileSelect={(f) => setAttachedFiles([...attachedFiles, f])}
+                onFileSelect={f => setAttachedFiles(prev => [...prev, f])}
               />
+              <p className="text-center text-[10px] text-neutral-700">
+                AI can make mistakes. Verify important information.
+              </p>
             </div>
           </div>
         </div>
 
-        {/* Artifacts Area */}
+        {/* Artifact panel */}
         {activeArtifact && (
-          <div className={`h-full flex-shrink-0 transition-all duration-300 ${activeArtifact ? 'w-full md:w-1/2' : 'w-0'}`}>
-            <ArtifactViewer 
-              artifact={activeArtifact} 
-              onClose={() => setActiveArtifact(null)} 
-            />
+          <div className="w-full md:w-1/2 h-full flex-shrink-0 border-l border-neutral-800">
+            <ArtifactViewer artifact={activeArtifact} onClose={() => setActiveArtifact(null)} />
           </div>
         )}
       </div>

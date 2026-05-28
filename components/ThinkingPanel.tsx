@@ -1,43 +1,95 @@
-import React, { useState, useEffect } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
+"use client";
+import React, { useState, useEffect, useRef } from "react";
+import { Brain, ChevronDown, ChevronRight } from "lucide-react";
 
-export function ThinkingPanel({ content, isStreaming }: { content: string, isStreaming?: boolean }) {
+interface ThinkingPanelProps {
+  content: string;
+  isStreaming?: boolean;
+}
+
+export function ThinkingPanel({ content, isStreaming }: ThinkingPanelProps) {
   const [isOpen, setIsOpen] = useState(true);
+  const [tokenCount, setTokenCount] = useState(0);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Automatically close when streaming finishes, unless user manually toggled it
+  // Auto-close when streaming finishes
   useEffect(() => {
-    if (isStreaming === false) {
-      setIsOpen(false);
-    } else if (isStreaming === true) {
-      setIsOpen(true);
-    }
+    if (!isStreaming) setIsOpen(false);
+    else setIsOpen(true);
   }, [isStreaming]);
+
+  // Rough token counter
+  useEffect(() => {
+    setTokenCount(Math.round(content.split(/\s+/).length * 1.3));
+  }, [content]);
+
+  // Auto-scroll while open + streaming
+  useEffect(() => {
+    if (isOpen && isStreaming && scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [content, isOpen, isStreaming]);
 
   if (!content) return null;
 
   return (
-    <div className="my-2 border border-neutral-700 rounded-md overflow-hidden bg-neutral-900/50">
-      <button 
+    <div className={`my-3 rounded-xl overflow-hidden transition-all duration-300 ${
+      isStreaming
+        ? "border border-violet-500/40 shadow-[0_0_20px_rgba(139,92,246,0.15)]"
+        : "border border-neutral-700/60"
+    }`}>
+      {/* Header */}
+      <button
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full flex items-center justify-between p-2 text-sm text-neutral-400 hover:text-neutral-300 hover:bg-neutral-800 transition-colors"
+        className="w-full flex items-center gap-2.5 px-3 py-2.5 bg-neutral-900/80 hover:bg-neutral-800/60 transition-colors text-left"
       >
-        <div className="flex items-center gap-2">
-          {isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-          <span className="font-medium flex items-center gap-2">
-            Thinking Process
-            {isStreaming && (
-              <span className="flex gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-bounce" style={{ animationDelay: '0ms' }} />
-                <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-bounce" style={{ animationDelay: '150ms' }} />
-                <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-bounce" style={{ animationDelay: '300ms' }} />
-              </span>
-            )}
-          </span>
+        <div className={`relative flex-shrink-0 ${isStreaming ? "animate-pulse" : ""}`}>
+          <Brain size={15} className={isStreaming ? "text-violet-400" : "text-neutral-500"} />
+          {isStreaming && (
+            <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-violet-500 rounded-full animate-ping" />
+          )}
         </div>
+
+        <span className={`text-sm font-medium ${isStreaming ? "text-violet-300" : "text-neutral-400"}`}>
+          {isStreaming ? "Thinking..." : "Thought Process"}
+        </span>
+
+        {isStreaming && (
+          <span className="flex gap-0.5 ml-1">
+            {[0, 150, 300].map((delay) => (
+              <span
+                key={delay}
+                className="w-1.5 h-1.5 rounded-full bg-violet-500 animate-bounce"
+                style={{ animationDelay: `${delay}ms` }}
+              />
+            ))}
+          </span>
+        )}
+
+        <span className="ml-auto flex items-center gap-2">
+          {tokenCount > 0 && (
+            <span className="text-[11px] text-neutral-600 font-mono">
+              ~{tokenCount.toLocaleString()} tokens
+            </span>
+          )}
+          {isOpen ? (
+            <ChevronDown size={13} className="text-neutral-500" />
+          ) : (
+            <ChevronRight size={13} className="text-neutral-500" />
+          )}
+        </span>
       </button>
+
+      {/* Body */}
       {isOpen && (
-        <div className="p-3 text-sm text-neutral-500 italic border-t border-neutral-800 whitespace-pre-wrap">
+        <div
+          ref={scrollRef}
+          className="px-4 py-3 text-xs text-neutral-500 italic whitespace-pre-wrap leading-relaxed max-h-56 overflow-y-auto border-t border-neutral-800/60 bg-neutral-950/40 font-mono"
+        >
           {content}
+          {isStreaming && (
+            <span className="inline-block w-2 h-3 bg-violet-500/60 animate-pulse ml-0.5 rounded-sm" />
+          )}
         </div>
       )}
     </div>

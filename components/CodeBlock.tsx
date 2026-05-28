@@ -26,7 +26,7 @@ export function CodeBlock({
         <div className="flex items-center gap-3">
           {onOpenArtifact && (
             <button 
-              onClick={() => onOpenArtifact({ title: "Code Snippet", language, content: code })}
+              onClick={() => onOpenArtifact({ type: "artifact", title: "Code Snippet", language, content: code })}
               className="hover:text-white transition-colors flex items-center gap-1 text-xs"
               title="Open in Artifact Viewer"
             >
